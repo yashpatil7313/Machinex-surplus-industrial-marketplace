@@ -1,0 +1,16 @@
+# Render.com Blueprint Specification for MACHINEX
+# Deploy instantly by connecting your GitHub repo at https://render.com
+services:
+  - type: web
+    name: machinex-marketplace
+    runtime: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 5000

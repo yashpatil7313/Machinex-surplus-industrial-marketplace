@@ -1,0 +1,22 @@
+{
+  "name": "machinex-monorepo",
+  "version": "1.0.0",
+  "description": "MACHINEX - B2B Online Marketplace for Surplus & Unused Machine Parts",
+  "main": "backend/server.js",
+  "scripts": {
+    "build": "npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend install",
+    "start": "node backend/server.js",
+    "server": "npm --prefix backend start",
+    "client": "npm --prefix frontend dev",
+    "test": "node backend/utils/testSuite.js"
+  },
+  "keywords": [
+    "marketplace",
+    "machine-parts",
+    "surplus",
+    "b2b",
+    "industrial"
+  ],
+  "author": "MachineX Team",
+  "license": "ISC"
+}

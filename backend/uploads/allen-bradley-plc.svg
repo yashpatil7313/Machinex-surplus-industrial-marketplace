@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+    <defs>
+      <linearGradient id="grad_allenbradleyplcsvg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#27272A"/>
+        <stop offset="100%" stop-color="#020617"/>
+      </linearGradient>
+      <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+        <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+      </pattern>
+    </defs>
+    <rect width="400" height="300" fill="url(#grad_allenbradleyplcsvg)"/>
+    <rect width="400" height="300" fill="url(#grid)"/>
+    
+    <!-- Top badge -->
+    <rect x="24" y="20" width="150" height="24" rx="12" fill="rgba(255,255,255,0.1)"/>
+    <text x="34" y="36" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#94A3B8" letter-spacing="1">PLC & INDUSTRIAL CONTROLS</text>
+    
+    <text x="376" y="36" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="800" fill="#F8FAFC" letter-spacing="1.5">ROCKWELL / AB</text>
+
+    <!-- Industrial Graphic -->
+    <g>
+      <rect x="140" y="70" width="120" height="140" rx="8" fill="#3F3F46" stroke="#FB7185" stroke-width="6"/>
+           <rect x="160" y="90" width="80" height="25" fill="#18181B"/>
+           <circle cx="160" cy="135" r="5" fill="#34D399"/>
+           <circle cx="180" cy="135" r="5" fill="#34D399"/>
+           <circle cx="200" cy="135" r="5" fill="#34D399"/>
+           <circle cx="220" cy="135" r="5" fill="#34D399"/>
+           <circle cx="240" cy="135" r="5" fill="#34D399"/>
+           <circle cx="160" cy="160" r="5" fill="#34D399"/>
+           <circle cx="180" cy="160" r="5" fill="#34D399"/>
+           <circle cx="200" cy="160" r="5" fill="#34D399"/>
+           <circle cx="220" cy="160" r="5" fill="#34D399"/>
+           <circle cx="240" cy="160" r="5" fill="#34D399"/>
+    </g>
+
+    <!-- Bottom Specs Strip -->
+    <rect x="16" y="232" width="368" height="54" rx="8" fill="rgba(15, 23, 42, 0.85)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="30" y="254" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700" fill="#F8FAFC">ALLEN BRADLEY CONTROLLOGIX</text>
+    <text x="30" y="272" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="500" fill="#94A3B8">16-Point 24V DC Digital Input Module</text>
+    <text x="370" y="264" text-anchor="end" font-family="monospace" font-size="11" font-weight="600" fill="#FB7185">1756-IB16</text>
+  </svg>
