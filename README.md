@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # MACHINEX: B2B Marketplace for Surplus & Unused Machine Parts
 
 > **"Give Your Unused Machine Parts a Second Life"**  
@@ -337,3 +338,7 @@ node utils/testSuite.js
 2. **CAD / 3D STEP Viewer**: Embedded WebGL viewer allowing engineers to inspect 3D CAD files of obsolete tooling directly in the browser.
 3. **Logistics Freight Calculator**: Dynamic freight quotes based on motor weights, crate dimensions, and pin-code haulage rates.
 4. **Automated Equipment Valuation AI**: Image-based wear estimation using vision models to suggest optimal surplus resale pricing.
+=======
+# Machinex-surplus-industrial-marketplace
+"MACHINEX – A full-stack B2B online marketplace for surplus, unused, and obsolete industrial machine parts. Built with React 18, Vite, Tailwind CSS, Node.js, Express, and MySQL/SQLite with smart search scoring and automated inventory valuation."
+>>>>>>> 11d4861a78995c27fe2d80e942e21f366502d487
