@@ -4,7 +4,7 @@
   "description": "MACHINEX - B2B Online Marketplace for Surplus & Unused Machine Parts",
   "main": "backend/server.js",
   "scripts": {
-    "build": "npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend install",
+    "build": "npm --prefix frontend install --include=dev && npm --prefix frontend run build && npm --prefix backend install",
     "start": "node backend/server.js",
     "server": "npm --prefix backend start",
     "client": "npm --prefix frontend dev",
