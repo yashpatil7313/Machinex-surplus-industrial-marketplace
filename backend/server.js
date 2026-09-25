@@ -52,12 +52,18 @@ app.use('/uploads', express.static(uploadsDir, {
 
 // API Root & Health Check
 app.get('/api', (req, res) => {
+  const modeLabel =
+    db.dbEngine === 'postgres'
+      ? 'PostgreSQL Production Database'
+      : db.dbEngine === 'mysql'
+      ? 'MySQL 8 Production Database'
+      : 'Embedded Local Database';
   res.json({
     project: 'MACHINEX',
     tagline: 'Give Your Unused Machine Parts a Second Life',
     status: 'ONLINE',
     version: '1.0.0',
-    db_mode: db.isFallback ? 'Embedded Local Database' : 'MySQL 8 Production Database'
+    db_mode: modeLabel
   });
 });
 
@@ -67,7 +73,7 @@ app.get('/api/health', async (req, res) => {
     res.json({
       status: 'healthy',
       database: 'connected',
-      db_mode: db.isFallback ? 'Embedded Local' : 'MySQL 8'
+      db_mode: db.dbEngine
     });
   } catch (err) {
     res.status(500).json({ status: 'unhealthy', error: err.message });
@@ -116,12 +122,18 @@ app.use((err, req, res, next) => {
 async function startServer() {
   try {
     await db.initDatabase();
+    const dbLabel =
+      db.dbEngine === 'postgres'
+        ? 'PostgreSQL (Cloud Persistent)'
+        : db.dbEngine === 'mysql'
+        ? 'MySQL 8 (Cloud Persistent)'
+        : 'Embedded Fallback (machinex_local.db)';
     app.listen(PORT, '0.0.0.0', () => {
       console.log('====================================================');
       console.log(`🚀 MACHINEX Server running on port ${PORT}`);
       console.log(`📡 Local:   http://localhost:${PORT}`);
       console.log(`🌐 Network: http://0.0.0.0:${PORT}`);
-      console.log(`🗄️ Database: ${db.isFallback ? 'Embedded Fallback (machinex_local.db)' : 'MySQL 8'}`);
+      console.log(`🗄️ Database: ${dbLabel}`);
       console.log(`💻 Frontend: ${fs.existsSync(frontendDistPath) ? 'Unified Production Bundle' : 'Dev Mode (Vite on :5173)'}`);
       console.log('====================================================');
     });

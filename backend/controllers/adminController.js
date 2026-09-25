@@ -163,7 +163,7 @@ exports.getAdminListings = async (req, res) => {
 exports.approveListing = async (req, res) => {
   try {
     const partId = parseInt(req.params.id, 10);
-    await db.query('UPDATE parts SET status = "approved", updated_at = CURRENT_TIMESTAMP WHERE id = ?', [partId]);
+    await db.query("UPDATE parts SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [partId]);
     return res.json({ success: true, message: 'Machine part listing approved and is now live in the marketplace!' });
   } catch (err) {
     console.error('approveListing error:', err);
@@ -176,7 +176,7 @@ exports.rejectListing = async (req, res) => {
   try {
     const partId = parseInt(req.params.id, 10);
     const { reason } = req.body;
-    await db.query('UPDATE parts SET status = "rejected", updated_at = CURRENT_TIMESTAMP WHERE id = ?', [partId]);
+    await db.query("UPDATE parts SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [partId]);
     return res.json({ success: true, message: 'Machine part listing rejected.', reason });
   } catch (err) {
     console.error('rejectListing error:', err);

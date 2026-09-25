@@ -1,54 +1,104 @@
 const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');
+const { Pool: PgPool, types: pgTypes } = require('pg');
 const initSqlJs = require('sql.js');
 
+// Configure pg to return numbers for COUNT/SUM/NUMERIC just like MySQL & SQLite
+pgTypes.setTypeParser(20, (val) => (val === null ? null : parseInt(val, 10))); // INT8 / BIGINT
+pgTypes.setTypeParser(1700, (val) => (val === null ? null : parseFloat(val))); // NUMERIC / DECIMAL
+
 let pool = null;
+let pgPool = null;
 let sqlJsDb = null;
 let isFallback = false;
+let dbEngine = 'sqlite'; // 'postgres' | 'mysql' | 'sqlite'
+
 let dbFilePath = process.env.DATA_DIR
   ? path.join(process.env.DATA_DIR, 'machinex_local.db')
   : path.join(__dirname, '..', 'machinex_local.db');
 
-function buildDbConfig() {
-  if (process.env.DATABASE_URL) {
-    try {
-      const parsed = new URL(process.env.DATABASE_URL);
-      return {
-        host: parsed.hostname,
-        user: decodeURIComponent(parsed.username),
-        password: decodeURIComponent(parsed.password),
-        database: parsed.pathname.replace(/^\//, '') || 'machinex_db',
-        port: parseInt(parsed.port || '3306', 10),
-        ssl: { rejectUnauthorized: false },
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-        connectTimeout: 8000
-      };
-    } catch (e) {
-      console.warn('Invalid DATABASE_URL format, falling back to DB_* env vars');
-    }
-  }
+const PG_SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  phone VARCHAR(50),
+  role VARCHAR(50) DEFAULT 'buyer',
+  company_name VARCHAR(255),
+  location VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-  const host = process.env.DB_HOST || 'localhost';
-  const isRemote = host !== 'localhost' && host !== '127.0.0.1';
+CREATE TABLE IF NOT EXISTS categories (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-  return {
-    host,
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'machinex_db',
-    port: parseInt(process.env.DB_PORT || '3306', 10),
-    ...(isRemote || process.env.DB_SSL === 'true' ? { ssl: { rejectUnauthorized: false } } : {}),
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    connectTimeout: isRemote ? 8000 : 2000
-  };
-}
+CREATE TABLE IF NOT EXISTS parts (
+  id SERIAL PRIMARY KEY,
+  seller_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category_id INT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  brand VARCHAR(255),
+  model_number VARCHAR(255),
+  description TEXT,
+  condition_state VARCHAR(100) NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  price NUMERIC(12, 2) NOT NULL,
+  location VARCHAR(255),
+  image TEXT,
+  status VARCHAR(50) DEFAULT 'pending',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-const dbConfig = buildDbConfig();
+CREATE TABLE IF NOT EXISTS wishlist (
+  id SERIAL PRIMARY KEY,
+  buyer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  part_id INT NOT NULL REFERENCES parts(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (buyer_id, part_id)
+);
+
+CREATE TABLE IF NOT EXISTS inquiries (
+  id SERIAL PRIMARY KEY,
+  part_id INT NOT NULL REFERENCES parts(id) ON DELETE CASCADE,
+  buyer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  seller_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message TEXT NOT NULL,
+  quantity INT DEFAULT 1,
+  reply TEXT,
+  status VARCHAR(50) DEFAULT 'pending',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS purchase_requests (
+  id SERIAL PRIMARY KEY,
+  part_id INT NOT NULL REFERENCES parts(id) ON DELETE CASCADE,
+  buyer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  seller_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  quantity INT NOT NULL,
+  total_price NUMERIC(12, 2) NOT NULL,
+  message TEXT,
+  status VARCHAR(50) DEFAULT 'pending',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS reports (
+  id SERIAL PRIMARY KEY,
+  part_id INT NOT NULL REFERENCES parts(id) ON DELETE CASCADE,
+  reported_by INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reason VARCHAR(255) NOT NULL,
+  details TEXT,
+  status VARCHAR(50) DEFAULT 'pending',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+`;
 
 // SQLite compatible schema for embedded fallback
 const SQLITE_SCHEMA = `
@@ -153,81 +203,203 @@ function saveSqlJsToFile() {
   }
 }
 
-async function initDatabase() {
-  // 1. Try MySQL Connection
+async function createPostgresPool() {
+  const connStr = process.env.DATABASE_URL;
+  const baseConfig = connStr
+    ? { connectionString: connStr, connectionTimeoutMillis: 8000 }
+    : {
+        host: process.env.PGHOST || process.env.DB_HOST || 'localhost',
+        user: process.env.PGUSER || process.env.DB_USER || 'postgres',
+        password: process.env.PGPASSWORD || process.env.DB_PASSWORD || '',
+        database: process.env.PGDATABASE || process.env.DB_NAME || 'machinex_db',
+        port: parseInt(process.env.PGPORT || process.env.DB_PORT || '5432', 10),
+        connectionTimeoutMillis: 8000
+      };
+
+  // Try with SSL first for cloud providers (Render External, Neon, Supabase), fallback to non-SSL (Render Internal, Localhost)
   try {
+    const sslPool = new PgPool({ ...baseConfig, ssl: { rejectUnauthorized: false } });
+    await sslPool.query('SELECT 1');
+    return sslPool;
+  } catch (sslErr) {
+    const nonSslPool = new PgPool({ ...baseConfig, ssl: false });
+    await nonSslPool.query('SELECT 1');
+    return nonSslPool;
+  }
+}
+
+async function initDatabase() {
+  const dbUrl = (process.env.DATABASE_URL || '').trim();
+  const wantsPostgres =
+    dbUrl.startsWith('postgres://') ||
+    dbUrl.startsWith('postgresql://') ||
+    process.env.DB_ENGINE === 'postgres' ||
+    Boolean(process.env.PGHOST) ||
+    process.env.DB_PORT === '5432';
+
+  // 1. Try PostgreSQL Connection if configured
+  if (wantsPostgres) {
     try {
-      const testConn = await mysql.createConnection({
-        host: dbConfig.host,
-        user: dbConfig.user,
-        password: dbConfig.password,
-        port: dbConfig.port,
-        ssl: dbConfig.ssl,
-        connectTimeout: dbConfig.connectTimeout
-      });
-      await testConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\`;`);
-      await testConn.end();
-    } catch (createDbErr) {
-      // Managed cloud MySQL instances often pre-create the database and restrict CREATE DATABASE
-    }
+      pgPool = await createPostgresPool();
+      dbEngine = 'postgres';
+      isFallback = false;
+      console.log('✅ [MachineX DB] Connected to PostgreSQL Database');
 
-    pool = mysql.createPool(dbConfig);
-    const [test] = await pool.query('SELECT 1 + 1 AS result');
-    console.log('✅ [MachineX DB] Connected to MySQL 8 (' + dbConfig.host + ':' + dbConfig.port + ')');
+      // Initialize schema
+      await pgPool.query(PG_SCHEMA);
 
-    // Initialize schema if tables do not exist
-    const schemaPath = path.join(__dirname, '..', '..', 'database', 'schema.sql');
-    if (fs.existsSync(schemaPath)) {
-      const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-      const statements = schemaSql
-        .replace(/--.*$/gm, '')
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0 && !s.toLowerCase().startsWith('create database') && !s.toLowerCase().startsWith('use '));
-      
-      for (const statement of statements) {
-        try {
-          await pool.query(statement);
-        } catch (err) {
-          // ignore already exists errors
-        }
-      }
-      // Ensure parts.image is LONGTEXT for persistent Base64 images
-      try {
-        await pool.query('ALTER TABLE parts MODIFY COLUMN image LONGTEXT;');
-      } catch (alterErr) {}
-    }
+      // Seed initial data if empty
+      const userCountRes = await pgPool.query('SELECT COUNT(*) AS count FROM users');
+      if (parseInt(userCountRes.rows[0].count, 10) === 0) {
+        console.log('🌱 [MachineX DB] Seeding initial catalog & accounts into PostgreSQL...');
+        const seedPath = path.join(__dirname, '..', '..', 'database', 'seed.sql');
+        if (fs.existsSync(seedPath)) {
+          const seedSql = fs.readFileSync(seedPath, 'utf8');
+          const seedStatements = seedSql
+            .replace(/--.*$/gm, '')
+            .split(';')
+            .map((s) => s.trim())
+            .filter(
+              (s) =>
+                s.length > 0 &&
+                !s.toLowerCase().startsWith('use ') &&
+                !s.toLowerCase().startsWith('delete from')
+            );
 
-    // Check if users exist, otherwise seed
-    const [userRows] = await pool.query('SELECT COUNT(*) as count FROM users');
-    if (userRows[0].count === 0) {
-      console.log('🌱 [MachineX DB] Seeding initial data into MySQL...');
-      const seedPath = path.join(__dirname, '..', '..', 'database', 'seed.sql');
-      if (fs.existsSync(seedPath)) {
-        const seedSql = fs.readFileSync(seedPath, 'utf8');
-        const seedStatements = seedSql
-          .replace(/--.*$/gm, '')
-          .split(';')
-          .map(s => s.trim())
-          .filter(s => s.length > 0 && !s.toLowerCase().startsWith('use '));
-        for (const s of seedStatements) {
-          try {
-            await pool.query(s);
-          } catch (e) {
-            console.error('Seed error:', e.message);
+          for (const s of seedStatements) {
+            try {
+              await pgPool.query(s);
+            } catch (e) {
+              console.error('PG Seed statement notice:', e.message);
+            }
           }
+
+          // Synchronize SERIAL sequences after explicit ID inserts
+          const tables = ['users', 'categories', 'parts', 'wishlist', 'inquiries', 'purchase_requests', 'reports'];
+          for (const t of tables) {
+            try {
+              await pgPool.query(
+                `SELECT setval(pg_get_serial_sequence('${t}', 'id'), COALESCE((SELECT MAX(id) FROM ${t}), 1), true);`
+              );
+            } catch (seqErr) {}
+          }
+          console.log('✅ [MachineX DB] PostgreSQL seeding & sequence sync completed.');
         }
-        console.log('✅ [MachineX DB] Seeding completed.');
       }
+      return;
+    } catch (pgErr) {
+      console.warn('⚠️ [MachineX DB] PostgreSQL connection failed (' + pgErr.message + ').');
     }
-    return;
-  } catch (mysqlErr) {
-    console.warn('⚠️ [MachineX DB] MySQL connection not established (' + mysqlErr.message + ').');
-    console.log('🚀 [MachineX DB] Auto-activating Embedded High-Performance Database Engine for seamless execution & demonstration.');
-    isFallback = true;
   }
 
-  // 2. Initialize Fallback WebAssembly Database
+  // 2. Try MySQL Connection if configured
+  const wantsMysql =
+    dbUrl.startsWith('mysql://') ||
+    process.env.DB_ENGINE === 'mysql' ||
+    (process.env.DB_HOST && !wantsPostgres);
+
+  if (wantsMysql) {
+    try {
+      let dbConfig;
+      if (dbUrl.startsWith('mysql://')) {
+        const parsed = new URL(dbUrl);
+        dbConfig = {
+          host: parsed.hostname,
+          user: decodeURIComponent(parsed.username),
+          password: decodeURIComponent(parsed.password),
+          database: parsed.pathname.replace(/^\//, '') || 'machinex_db',
+          port: parseInt(parsed.port || '3306', 10),
+          ssl: { rejectUnauthorized: false },
+          waitForConnections: true,
+          connectionLimit: 10,
+          connectTimeout: 8000
+        };
+      } else {
+        const host = process.env.DB_HOST || 'localhost';
+        const isRemote = host !== 'localhost' && host !== '127.0.0.1';
+        dbConfig = {
+          host,
+          user: process.env.DB_USER || 'root',
+          password: process.env.DB_PASSWORD || '',
+          database: process.env.DB_NAME || 'machinex_db',
+          port: parseInt(process.env.DB_PORT || '3306', 10),
+          ...(isRemote || process.env.DB_SSL === 'true' ? { ssl: { rejectUnauthorized: false } } : {}),
+          waitForConnections: true,
+          connectionLimit: 10,
+          connectTimeout: isRemote ? 8000 : 2000
+        };
+      }
+
+      try {
+        const testConn = await mysql.createConnection({
+          host: dbConfig.host,
+          user: dbConfig.user,
+          password: dbConfig.password,
+          port: dbConfig.port,
+          ssl: dbConfig.ssl,
+          connectTimeout: dbConfig.connectTimeout
+        });
+        await testConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\`;`);
+        await testConn.end();
+      } catch (e) {}
+
+      pool = mysql.createPool(dbConfig);
+      await pool.query('SELECT 1 + 1 AS result');
+      dbEngine = 'mysql';
+      isFallback = false;
+      console.log('✅ [MachineX DB] Connected to MySQL 8 (' + dbConfig.host + ':' + dbConfig.port + ')');
+
+      const schemaPath = path.join(__dirname, '..', '..', 'database', 'schema.sql');
+      if (fs.existsSync(schemaPath)) {
+        const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+        const statements = schemaSql
+          .replace(/--.*$/gm, '')
+          .split(';')
+          .map((s) => s.trim())
+          .filter(
+            (s) =>
+              s.length > 0 &&
+              !s.toLowerCase().startsWith('create database') &&
+              !s.toLowerCase().startsWith('use ')
+          );
+        for (const statement of statements) {
+          try {
+            await pool.query(statement);
+          } catch (err) {}
+        }
+        try {
+          await pool.query('ALTER TABLE parts MODIFY COLUMN image LONGTEXT;');
+        } catch (alterErr) {}
+      }
+
+      const [userRows] = await pool.query('SELECT COUNT(*) as count FROM users');
+      if (userRows[0].count === 0) {
+        const seedPath = path.join(__dirname, '..', '..', 'database', 'seed.sql');
+        if (fs.existsSync(seedPath)) {
+          const seedSql = fs.readFileSync(seedPath, 'utf8');
+          const seedStatements = seedSql
+            .replace(/--.*$/gm, '')
+            .split(';')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0 && !s.toLowerCase().startsWith('use '));
+          for (const s of seedStatements) {
+            try {
+              await pool.query(s);
+            } catch (e) {}
+          }
+        }
+      }
+      return;
+    } catch (mysqlErr) {
+      console.warn('⚠️ [MachineX DB] MySQL connection not established (' + mysqlErr.message + ').');
+    }
+  }
+
+  // 3. Fallback: Embedded SQLite WebAssembly Database
+  console.log('🚀 [MachineX DB] Auto-activating Embedded Database Engine (' + dbFilePath + ').');
+  isFallback = true;
+  dbEngine = 'sqlite';
+
   const SQL = await initSqlJs();
   if (fs.existsSync(dbFilePath)) {
     const fileBuffer = fs.readFileSync(dbFilePath);
@@ -236,7 +408,6 @@ async function initDatabase() {
     sqlJsDb = new SQL.Database();
     sqlJsDb.run(SQLITE_SCHEMA);
 
-    // Seed fallback database
     console.log('🌱 [MachineX DB] Initializing fallback database with demonstration data...');
     const seedPath = path.join(__dirname, '..', '..', 'database', 'seed.sql');
     if (fs.existsSync(seedPath)) {
@@ -244,15 +415,18 @@ async function initDatabase() {
       const seedStatements = seedSql
         .replace(/--.*$/gm, '')
         .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0 && !s.toLowerCase().startsWith('use ') && !s.toLowerCase().startsWith('delete from'));
-      
+        .map((s) => s.trim())
+        .filter(
+          (s) =>
+            s.length > 0 &&
+            !s.toLowerCase().startsWith('use ') &&
+            !s.toLowerCase().startsWith('delete from')
+        );
+
       for (const s of seedStatements) {
         try {
           sqlJsDb.run(s);
-        } catch (e) {
-          // ignore minor DDL mismatch
-        }
+        } catch (e) {}
       }
     }
     saveSqlJsToFile();
@@ -260,23 +434,57 @@ async function initDatabase() {
   }
 }
 
-// Unified Query Function: returns [rows, fields]
+// Unified Query Function: returns [rows, fields] across PostgreSQL, MySQL, and SQLite
 async function query(sql, params = []) {
-  if (!pool && !sqlJsDb) {
+  if (!pgPool && !pool && !sqlJsDb) {
     await initDatabase();
   }
 
-  if (!isFallback && pool) {
+  // --- A. PostgreSQL Execution ---
+  if (dbEngine === 'postgres' && pgPool) {
+    let paramIndex = 0;
+    let pgSql = sql
+      .trim()
+      .replace(/\?/g, () => `$${++paramIndex}`)
+      .replace(/\bLIKE\b/gi, 'ILIKE')
+      .replace(/=\s*"([^"]+)"/g, "= '$1'");
+
+    const isInsert = /^insert\s+into/i.test(pgSql);
+    const isSelect = /^select/i.test(pgSql);
+
+    if (isInsert && !/\breturning\b/i.test(pgSql)) {
+      pgSql = pgSql.replace(/;?\s*$/, ' RETURNING id');
+    }
+
+    const normalizedParams = (params || []).map((p) => (p === undefined ? null : p));
+    const res = await pgPool.query(pgSql, normalizedParams);
+
+    if (isSelect) {
+      return [res.rows, res.fields];
+    } else {
+      return [
+        {
+          insertId: res.rows && res.rows[0] ? res.rows[0].id : 0,
+          affectedRows: res.rowCount,
+          changedRows: res.rowCount
+        },
+        null
+      ];
+    }
+  }
+
+  // --- B. MySQL Execution ---
+  if (dbEngine === 'mysql' && pool) {
     return await pool.query(sql, params);
   }
 
-  // Fallback SQL execution
+  // --- C. SQLite Fallback Execution ---
   try {
     const trimmedSql = sql.trim();
-    const isSelect = /^select/i.test(trimmedSql) || /^show/i.test(trimmedSql) || /^pragma/i.test(trimmedSql);
-    
-    // Normalize params: convert undefined to null, boolean to 0/1
-    const normalizedParams = (params || []).map(p => {
+    const isSelect =
+      /^select/i.test(trimmedSql) || /^show/i.test(trimmedSql) || /^pragma/i.test(trimmedSql);
+
+    const normalizedParams = (params || []).map((p) => {
       if (p === undefined) return null;
       if (typeof p === 'boolean') return p ? 1 : 0;
       return p;
@@ -308,12 +516,14 @@ async function query(sql, params = []) {
 
       saveSqlJsToFile();
 
-      const result = {
-        insertId,
-        affectedRows,
-        changedRows: affectedRows
-      };
-      return [result, null];
+      return [
+        {
+          insertId,
+          affectedRows,
+          changedRows: affectedRows
+        },
+        null
+      ];
     }
   } catch (err) {
     console.error('SQL Execution Error:', err.message, '\nQuery:', sql, '\nParams:', params);
@@ -324,5 +534,10 @@ async function query(sql, params = []) {
 module.exports = {
   initDatabase,
   query,
-  get isFallback() { return isFallback; }
+  get isFallback() {
+    return isFallback;
+  },
+  get dbEngine() {
+    return dbEngine;
+  }
 };

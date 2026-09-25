@@ -86,7 +86,7 @@ exports.updateReport = async (req, res) => {
 
     // Optional action: take down the reported listing
     if (action === 'takedown_listing') {
-      await db.query('UPDATE parts SET status = "rejected" WHERE id = ?', [report.part_id]);
+      await db.query("UPDATE parts SET status = 'rejected' WHERE id = ?", [report.part_id]);
     }
 
     const newStatus = status || 'resolved';
