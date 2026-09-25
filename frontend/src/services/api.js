@@ -92,6 +92,7 @@ export const adminService = {
   getListings: (params) => api.get('/api/admin/listings', { params }),
   approveListing: (id) => api.put(`/api/admin/listings/${id}/approve`),
   rejectListing: (id, data) => api.put(`/api/admin/listings/${id}/reject`, data),
+  exportBackup: () => api.get('/api/admin/backup'),
 };
 
 // Reports Service

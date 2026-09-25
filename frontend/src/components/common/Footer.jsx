@@ -83,15 +83,15 @@ export const Footer = () => {
             </ul>
           </div>
 
-          {/* Column 3: Platform & Viva Note */}
+          {/* Column 3: For Businesses */}
           <div>
             <h5 className="text-white font-semibold text-sm tracking-wider uppercase mb-4">For Businesses</h5>
             <ul className="space-y-2.5 text-sm">
-              <li><Link to="/register?role=seller" className="hover:text-white transition-colors">Become a Seller</Link></li>
+              <li><Link to="/register?role=seller" className="hover:text-white transition-colors">Become a Verified Seller</Link></li>
               <li><Link to="/register?role=buyer" className="hover:text-white transition-colors">Register as Buyer</Link></li>
               <li><Link to="/contact" className="hover:text-white transition-colors">Help Desk & Support</Link></li>
-              <li><Link to="/login" className="hover:text-white transition-colors">Demo Portal Login</Link></li>
-              <li><span className="inline-block px-2 py-0.5 mt-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-mono font-medium">College MDM Project</span></li>
+              <li><Link to="/login" className="hover:text-white transition-colors">Partner Portal Sign In</Link></li>
+              <li><span className="inline-block px-2 py-0.5 mt-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono font-medium">Verified B2B Exchange</span></li>
             </ul>
           </div>
         </div>

@@ -183,3 +183,35 @@ exports.rejectListing = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to reject listing.' });
   }
 };
+
+// GET /api/admin/backup - Export full database snapshot as JSON (including Base64 images)
+exports.exportDatabase = async (req, res) => {
+  try {
+    const [users] = await db.query('SELECT id, name, email, phone, role, company_name, location, created_at FROM users');
+    const [categories] = await db.query('SELECT * FROM categories');
+    const [parts] = await db.query('SELECT * FROM parts');
+    const [wishlist] = await db.query('SELECT * FROM wishlist');
+    const [inquiries] = await db.query('SELECT * FROM inquiries');
+    const [purchase_requests] = await db.query('SELECT * FROM purchase_requests');
+    const [reports] = await db.query('SELECT * FROM reports');
+
+    return res.json({
+      success: true,
+      exported_at: new Date().toISOString(),
+      db_mode: db.isFallback ? 'Embedded SQLite' : 'Cloud MySQL 8',
+      data: {
+        users,
+        categories,
+        parts,
+        wishlist,
+        inquiries,
+        purchase_requests,
+        reports
+      }
+    });
+  } catch (err) {
+    console.error('exportDatabase error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to export database snapshot.' });
+  }
+};
+

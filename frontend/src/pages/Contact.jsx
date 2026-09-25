@@ -66,8 +66,8 @@ export const Contact = () => {
           </div>
 
           <div className="p-4 rounded-2xl bg-orange-600/10 border border-orange-500/20 text-xs text-orange-300">
-            <p className="font-semibold mb-1">College MDM Project Presentation</p>
-            <p className="text-[11px] opacity-90">Demonstrated by the student development team with real-time MySQL database, REST APIs, and multi-role dashboards.</p>
+            <p className="font-semibold mb-1">Enterprise Procurement & Bulk Liquidation Desk</p>
+            <p className="text-[11px] opacity-90">Dedicated engineering account support for factory clearances, OEM surplus lots, and verified industrial buyers across India.</p>
           </div>
         </div>
 

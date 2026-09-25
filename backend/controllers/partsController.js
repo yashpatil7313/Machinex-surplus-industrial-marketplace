@@ -1,4 +1,17 @@
+const fs = require('fs');
 const db = require('../config/db');
+
+// Helper: Convert uploaded image file to persistent Base64 Data URI so it survives cloud container restarts
+function getPersistentImageUrl(file) {
+  if (!file || !file.path) return null;
+  try {
+    const fileBuffer = fs.readFileSync(file.path);
+    const mimeType = file.mimetype || 'image/jpeg';
+    return `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+  } catch (err) {
+    return `/uploads/${file.filename}`;
+  }
+}
 
 // Helper: Smart Search Scoring & Ranking Algorithm
 function scorePart(part, searchTokens) {
@@ -290,7 +303,7 @@ exports.createPart = async (req, res) => {
 
     let imageUrl = '/uploads/siemens-motor.jpg';
     if (req.file) {
-      imageUrl = `/uploads/${req.file.filename}`;
+      imageUrl = getPersistentImageUrl(req.file) || `/uploads/${req.file.filename}`;
     } else if (req.body.image) {
       imageUrl = req.body.image;
     }
@@ -356,7 +369,7 @@ exports.updatePart = async (req, res) => {
     const actualCondition = condition_state || condition || existing[0].condition_state;
     let imageUrl = existing[0].image;
     if (req.file) {
-      imageUrl = `/uploads/${req.file.filename}`;
+      imageUrl = getPersistentImageUrl(req.file) || `/uploads/${req.file.filename}`;
     } else if (req.body.image) {
       imageUrl = req.body.image;
     }

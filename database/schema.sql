@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS parts (
   quantity INT NOT NULL DEFAULT 1,
   price DECIMAL(12, 2) NOT NULL,
   location VARCHAR(255),
-  image VARCHAR(500),
+  image LONGTEXT,
   status ENUM('pending', 'approved', 'rejected', 'sold') DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

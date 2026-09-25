@@ -6,19 +6,49 @@ const initSqlJs = require('sql.js');
 let pool = null;
 let sqlJsDb = null;
 let isFallback = false;
-let dbFilePath = path.join(__dirname, '..', 'machinex_local.db');
+let dbFilePath = process.env.DATA_DIR
+  ? path.join(process.env.DATA_DIR, 'machinex_local.db')
+  : path.join(__dirname, '..', 'machinex_local.db');
 
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'machinex_db',
-  port: parseInt(process.env.DB_PORT || '3306', 10),
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  connectTimeout: 2000
-};
+function buildDbConfig() {
+  if (process.env.DATABASE_URL) {
+    try {
+      const parsed = new URL(process.env.DATABASE_URL);
+      return {
+        host: parsed.hostname,
+        user: decodeURIComponent(parsed.username),
+        password: decodeURIComponent(parsed.password),
+        database: parsed.pathname.replace(/^\//, '') || 'machinex_db',
+        port: parseInt(parsed.port || '3306', 10),
+        ssl: { rejectUnauthorized: false },
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        connectTimeout: 8000
+      };
+    } catch (e) {
+      console.warn('Invalid DATABASE_URL format, falling back to DB_* env vars');
+    }
+  }
+
+  const host = process.env.DB_HOST || 'localhost';
+  const isRemote = host !== 'localhost' && host !== '127.0.0.1';
+
+  return {
+    host,
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'machinex_db',
+    port: parseInt(process.env.DB_PORT || '3306', 10),
+    ...(isRemote || process.env.DB_SSL === 'true' ? { ssl: { rejectUnauthorized: false } } : {}),
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    connectTimeout: isRemote ? 8000 : 2000
+  };
+}
+
+const dbConfig = buildDbConfig();
 
 // SQLite compatible schema for embedded fallback
 const SQLITE_SCHEMA = `
@@ -126,20 +156,24 @@ function saveSqlJsToFile() {
 async function initDatabase() {
   // 1. Try MySQL Connection
   try {
-    const testConn = await mysql.createConnection({
-      host: dbConfig.host,
-      user: dbConfig.user,
-      password: dbConfig.password,
-      port: dbConfig.port,
-      connectTimeout: 1500
-    });
-
-    await testConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\`;`);
-    await testConn.end();
+    try {
+      const testConn = await mysql.createConnection({
+        host: dbConfig.host,
+        user: dbConfig.user,
+        password: dbConfig.password,
+        port: dbConfig.port,
+        ssl: dbConfig.ssl,
+        connectTimeout: dbConfig.connectTimeout
+      });
+      await testConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\`;`);
+      await testConn.end();
+    } catch (createDbErr) {
+      // Managed cloud MySQL instances often pre-create the database and restrict CREATE DATABASE
+    }
 
     pool = mysql.createPool(dbConfig);
     const [test] = await pool.query('SELECT 1 + 1 AS result');
-    console.log('✅ [MachineX DB] Connected to MySQL 8 on port ' + dbConfig.port);
+    console.log('✅ [MachineX DB] Connected to MySQL 8 (' + dbConfig.host + ':' + dbConfig.port + ')');
 
     // Initialize schema if tables do not exist
     const schemaPath = path.join(__dirname, '..', '..', 'database', 'schema.sql');
@@ -158,6 +192,10 @@ async function initDatabase() {
           // ignore already exists errors
         }
       }
+      // Ensure parts.image is LONGTEXT for persistent Base64 images
+      try {
+        await pool.query('ALTER TABLE parts MODIFY COLUMN image LONGTEXT;');
+      } catch (alterErr) {}
     }
 
     // Check if users exist, otherwise seed

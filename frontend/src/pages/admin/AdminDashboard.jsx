@@ -10,15 +10,19 @@ import {
   Layers,
   ArrowRight,
   Clock,
-  DollarSign
+  DollarSign,
+  Download
 } from 'lucide-react';
 import { adminService } from '../../services/api';
 import { StatusBadge } from '../../components/common/ConditionBadge';
 import { TableSkeleton } from '../../components/common/LoadingSkeleton';
+import { useToast } from '../../context/ToastContext';
 
 export const AdminDashboard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     adminService.getStatistics()
@@ -28,6 +32,27 @@ export const AdminDashboard = () => {
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }, []);
+
+  const handleDownloadBackup = async () => {
+    setExporting(true);
+    try {
+      const res = await adminService.exportBackup();
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `machinex-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Full database & image backup downloaded!');
+    } catch (err) {
+      toast.error(err.message || 'Failed to download backup');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -52,13 +77,23 @@ export const AdminDashboard = () => {
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">System Control & Telemetry</h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">Platform overview, listing verification queue, user directory, and compliance moderation.</p>
         </div>
-        <Link
-          to="/admin/listings"
-          className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs shadow-md shadow-orange-600/20 transition-all"
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>Review Pending Listings ({stats.pendingListings || 0})</span>
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleDownloadBackup}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs transition-all disabled:opacity-50"
+          >
+            <Download className="w-4 h-4 text-emerald-400" />
+            <span>{exporting ? 'Exporting...' : 'Download DB Snapshot'}</span>
+          </button>
+          <Link
+            to="/admin/listings"
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs shadow-md shadow-orange-600/20 transition-all"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Review Pending Listings ({stats.pendingListings || 0})</span>
+          </Link>
+        </div>
       </div>
 
       {/* 7 Required Metric Cards */}
